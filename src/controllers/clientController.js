@@ -9,8 +9,8 @@ const createClient = asyncHandler(async (req, res) => {
 });
 
 const getAllClients = asyncHandler(async (req, res) => {
-  const clients = await clientService.getAllClients(getCompanyId(req));
-  res.status(200).json({ success: true, data: clients });
+  const clients = await clientService.getAllClients(getCompanyId(req), req.query);
+  res.status(200).json({ success: true, data: clients.data, metadata: clients.metadata });
 });
 
 const getClientById = asyncHandler(async (req, res) => {
