@@ -1,8 +1,11 @@
 const express = require('express');
 const leadController = require('../controllers/leadController');
 const validateRequest = require('../middlewares/validateRequest');
+const { authenticate } = require('../middlewares/authMiddleware');
 
 const router = express.Router();
+
+router.use(authenticate);
 
 const leadSchema = {
   name: { type: 'string', required: true },
