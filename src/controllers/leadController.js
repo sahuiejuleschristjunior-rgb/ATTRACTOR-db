@@ -9,8 +9,8 @@ const createLead = asyncHandler(async (req, res) => {
 });
 
 const getAllLeads = asyncHandler(async (req, res) => {
-  const leads = await leadService.getAllLeads(getCompanyId(req));
-  res.status(200).json({ success: true, data: leads });
+  const leads = await leadService.getAllLeads(getCompanyId(req), req.query);
+  res.status(200).json({ success: true, data: leads.data, metadata: leads.metadata });
 });
 
 const getLeadById = asyncHandler(async (req, res) => {
