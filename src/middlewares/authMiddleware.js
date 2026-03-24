@@ -11,7 +11,14 @@ const authenticate = (req, _res, next) => {
   const token = authHeader.split(' ')[1];
 
   try {
-    req.user = verifyToken(token);
+    const user = verifyToken(token);
+
+    if (!user?.companyId) {
+      return next(new AppError('Invalid authentication payload', 401));
+    }
+
+    req.user = user;
+
     return next();
   } catch (_error) {
     return next(new AppError('Invalid or expired token', 401));

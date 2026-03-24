@@ -1,20 +1,20 @@
 const Client = require('../models/Client');
 const AppError = require('../utils/appError');
 
-const createClient = async (payload) => {
-  const existingClient = await Client.findOne({ email: payload.email });
+const createClient = async (companyId, payload) => {
+  const existingClient = await Client.findOne({ companyId, email: payload.email });
 
   if (existingClient) {
     throw new AppError('Client with this email already exists', 409);
   }
 
-  return Client.create(payload);
+  return Client.create({ ...payload, companyId });
 };
 
-const getAllClients = async () => Client.find().sort({ createdAt: -1 });
+const getAllClients = async (companyId) => Client.find({ companyId }).sort({ createdAt: -1 });
 
-const getClientById = async (clientId) => {
-  const client = await Client.findById(clientId);
+const getClientById = async (companyId, clientId) => {
+  const client = await Client.findOne({ _id: clientId, companyId });
 
   if (!client) {
     throw new AppError('Client not found', 404);
@@ -23,15 +23,19 @@ const getClientById = async (clientId) => {
   return client;
 };
 
-const updateClient = async (clientId, payload) => {
-  const client = await Client.findById(clientId);
+const updateClient = async (companyId, clientId, payload) => {
+  const client = await Client.findOne({ _id: clientId, companyId });
 
   if (!client) {
     throw new AppError('Client not found', 404);
   }
 
   if (payload.email && payload.email !== client.email) {
-    const emailOwner = await Client.findOne({ email: payload.email, _id: { $ne: clientId } });
+    const emailOwner = await Client.findOne({
+      companyId,
+      email: payload.email,
+      _id: { $ne: clientId }
+    });
 
     if (emailOwner) {
       throw new AppError('Client with this email already exists', 409);
@@ -44,8 +48,8 @@ const updateClient = async (clientId, payload) => {
   return client;
 };
 
-const deleteClient = async (clientId) => {
-  const client = await Client.findByIdAndDelete(clientId);
+const deleteClient = async (companyId, clientId) => {
+  const client = await Client.findOneAndDelete({ _id: clientId, companyId });
 
   if (!client) {
     throw new AppError('Client not found', 404);

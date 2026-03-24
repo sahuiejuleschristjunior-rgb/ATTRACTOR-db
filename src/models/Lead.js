@@ -2,6 +2,12 @@ const mongoose = require('mongoose');
 
 const leadSchema = new mongoose.Schema(
   {
+    companyId: {
+      type: String,
+      required: true,
+      trim: true,
+      index: true
+    },
     name: {
       type: String,
       required: true,
