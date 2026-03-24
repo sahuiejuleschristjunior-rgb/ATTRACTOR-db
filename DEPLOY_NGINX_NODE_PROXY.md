@@ -1,55 +1,83 @@
-# NGINX Reverse Proxy Fix for Node.js SaaS App
+# Production Fix: Node.js + PM2 + NGINX on Ubuntu
 
-Use these commands in order on the production server to stop the default **"Welcome to nginx"** page and route traffic to the Node.js app on `127.0.0.1:3000`.
+Use this exact sequence on the Ubuntu production server to fix all of the following:
+- PM2 not installed
+- Node app not running
+- NGINX default page shown instead of app
 
-## 1) Verify Node.js app is running and listening on 3000
+Assumptions:
+- Project root has `package.json`
+- Entry point is `src/server.js`
+- App should listen on port `3000`
+- Domain is `attractor.store` and `www.attractor.store`
+
+---
+
+## 1) Install PM2 globally
 
 ```bash
-# Check pm2 processes (if using PM2)
-pm2 list
+cd /path/to/your/project
+npm install -g pm2
+pm2 -v
+```
 
-# If your app is not online, start it (example)
-# pm2 start src/server.js --name db-attractor
+If `pm2 -v` prints a version, PM2 is installed correctly.
 
-# Confirm a node/pm2 process is running
-ps aux | egrep 'node|pm2' | grep -v grep
+---
 
-# Confirm backend is bound to 127.0.0.1:3000
-ss -ltnp | grep ':3000'
+## 2) Verify Node.js app file and run manually
 
-# Validate backend response directly
+```bash
+cd /path/to/your/project
+ls -l package.json src/server.js
+node src/server.js
+```
+
+Keep that terminal open for a moment and in a second terminal run:
+
+```bash
 curl -i http://127.0.0.1:3000
+ss -ltnp | grep ':3000'
 ```
 
-Expected result:
-- PM2 status is `online` (or a Node process exists).
-- `ss` shows a listener on `127.0.0.1:3000` (or `0.0.0.0:3000`).
-- `curl` returns your app response (not connection refused).
+Expected:
+- `curl` returns your API/app response
+- `ss` shows a process listening on `:3000`
 
-## 2) Create NGINX site configuration
+Stop manual run with `Ctrl + C`.
 
-Create `/etc/nginx/sites-available/db-attractor` with this exact content:
+---
 
-```nginx
-server {
-    listen 80;
-    server_name attractor.store www.attractor.store;
-
-    location / {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-    }
-}
-```
-
-Commands:
+## 3) Start app with PM2
 
 ```bash
-sudo tee /etc/nginx/sites-available/db-attractor > /dev/null <<'NGINX'
+cd /path/to/your/project
+pm2 start src/server.js --name db-api
+pm2 save
+pm2 startup
+```
+
+Important: after `pm2 startup`, PM2 prints one extra command (with `sudo ...`) for your system. Copy and run that exact command.
+
+---
+
+## 4) Verify PM2 process is online
+
+```bash
+pm2 list
+pm2 status db-api
+```
+
+Expected status: `online`.
+
+---
+
+## 5) Configure NGINX reverse proxy for attractor.store
+
+Create `/etc/nginx/sites-available/attractor.store`:
+
+```bash
+sudo tee /etc/nginx/sites-available/attractor.store > /dev/null <<'NGINX'
 server {
     listen 80;
     server_name attractor.store www.attractor.store;
@@ -60,119 +88,96 @@ server {
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
         proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
     }
 }
 NGINX
 ```
 
-## 3) Enable the site
+---
 
-```bash
-sudo ln -sfn /etc/nginx/sites-available/db-attractor /etc/nginx/sites-enabled/db-attractor
-```
-
-## 4) Disable default site
+## 6) Disable default NGINX site
 
 ```bash
 sudo rm -f /etc/nginx/sites-enabled/default
 ```
 
-## 5) Test NGINX configuration
+---
+
+## 7) Enable new NGINX config
+
+```bash
+sudo ln -sfn /etc/nginx/sites-available/attractor.store /etc/nginx/sites-enabled/attractor.store
+```
+
+---
+
+## 8) Validate and restart NGINX
 
 ```bash
 sudo nginx -t
-```
-
-Expected output should include `syntax is ok` and `test is successful`.
-
-## 6) Restart NGINX
-
-```bash
 sudo systemctl restart nginx
 sudo systemctl status nginx --no-pager -l
 ```
 
-## 7) Validate end-to-end
+Expected from `nginx -t`: `syntax is ok` and `test is successful`.
+
+---
+
+## 9) Debug checklist (if anything fails)
+
+### PM2 / Node checks
 
 ```bash
-# Local host header simulation
-curl -i -H 'Host: attractor.store' http://127.0.0.1/
+pm2 logs db-api --lines 200
+pm2 describe db-api
+curl -i http://localhost:3000
+ss -ltnp | grep ':3000'
+```
 
-# Public test (from your machine or server)
+If app is down:
+
+```bash
+cd /path/to/your/project
+pm2 restart db-api
+# or if missing
+pm2 start src/server.js --name db-api
+pm2 save
+```
+
+### NGINX checks
+
+```bash
+sudo nginx -t
+sudo nginx -T | sed -n '1,260p'
+sudo tail -n 200 /var/log/nginx/error.log
+sudo tail -n 200 /var/log/nginx/access.log
+```
+
+### Confirm domain routing
+
+```bash
+curl -i -H 'Host: attractor.store' http://127.0.0.1/
 curl -i http://attractor.store
 curl -i http://www.attractor.store
 ```
 
-You should no longer see the default NGINX welcome page.
+If domain still shows default page:
+- Verify `/etc/nginx/sites-enabled/default` is removed
+- Verify `/etc/nginx/sites-enabled/attractor.store` symlink exists
+- Verify DNS `A` records for `attractor.store` and `www.attractor.store` point to this server
 
----
-
-## Troubleshooting (if it fails)
-
-### A) NGINX test fails
-
-```bash
-sudo nginx -t
-```
-
-- Fix the reported file/line.
-- Re-run `sudo nginx -t` until clean, then restart.
-
-### B) 502 Bad Gateway
-
-Usually backend is down or wrong port.
-
-```bash
-curl -i http://127.0.0.1:3000
-ss -ltnp | grep ':3000'
-pm2 logs --lines 200
-```
-
-If app is not running:
-
-```bash
-pm2 start src/server.js --name db-attractor
-pm2 save
-```
-
-### C) Still seeing welcome page
-
-Likely default server block still active or wrong server_name handling.
-
-```bash
-ls -l /etc/nginx/sites-enabled/
-sudo nginx -T | sed -n '1,240p'
-```
-
-Check that:
-- `sites-enabled/default` is removed.
-- `db-attractor` is symlinked and loaded.
-- request `Host` matches `attractor.store` or `www.attractor.store`.
-
-### D) DNS/domain mismatch
+DNS check:
 
 ```bash
 dig +short attractor.store
 dig +short www.attractor.store
 ```
 
-Both records should point to your server IP.
+---
 
-### E) Firewall/security group blocking 80
+## Final expected state
 
-```bash
-sudo ufw status
-# or cloud firewall/security group check in provider console
-```
-
-Allow inbound TCP 80 (and 443 if TLS is configured).
-
-### F) Inspect NGINX logs
-
-```bash
-sudo tail -n 200 /var/log/nginx/error.log
-sudo tail -n 200 /var/log/nginx/access.log
-```
-
-Use timestamps and status codes to correlate failed requests.
+- `pm2 list` shows `db-api` as `online`
+- `curl http://localhost:3000` returns app response
+- `curl http://attractor.store` returns app response
+- NGINX default page is gone
