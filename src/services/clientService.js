@@ -2,10 +2,11 @@ const Client = require('../models/Client');
 const AppError = require('../utils/appError');
 
 const DEFAULT_LIMIT = 20;
+const MAX_LIMIT = 100;
 
 const parsePagination = (query = {}) => {
   const page = Math.max(parseInt(query.page, 10) || 1, 1);
-  const limit = Math.max(parseInt(query.limit, 10) || DEFAULT_LIMIT, 1);
+  const limit = Math.min(Math.max(parseInt(query.limit, 10) || DEFAULT_LIMIT, 1), MAX_LIMIT);
 
   return { page, limit };
 };
@@ -30,26 +31,31 @@ const parseSort = (sort) => {
     }, {});
 };
 
+const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const buildFilter = (companyId, query = {}) => {
   const filter = { companyId };
 
-  Object.entries(query).forEach(([key, value]) => {
-    if (!['page', 'limit', 'sort'].includes(key) && value !== undefined && value !== '') {
-      filter[key] = value;
-    }
-  });
+  if (query.status) {
+    filter.status = query.status;
+  }
+
+  if (query.search && typeof query.search === 'string') {
+    const regex = new RegExp(escapeRegex(query.search.trim()), 'i');
+    filter.$or = [{ name: regex }, { phone: regex }, { email: regex }];
+  }
 
   return filter;
 };
 
-const createClient = async (companyId, payload) => {
-  const existingClient = await Client.findOne({ companyId, email: payload.email });
+const createClient = async (companyId, userId, payload) => {
+  const existingClient = await Client.findOne({ companyId, email: payload.email }).lean();
 
   if (existingClient) {
     throw new AppError('Client with this email already exists', 409);
   }
 
-  return Client.create({ ...payload, companyId });
+  return Client.create({ ...payload, companyId, createdBy: userId, updatedBy: userId });
 };
 
 const getAllClients = async (companyId, queryParams = {}) => {
@@ -57,26 +63,30 @@ const getAllClients = async (companyId, queryParams = {}) => {
   const sort = parseSort(queryParams.sort);
   const filter = buildFilter(companyId, queryParams);
 
-  const total = await Client.countDocuments(filter);
-  const pages = Math.max(Math.ceil(total / limit), 1);
+  const [total, clients] = await Promise.all([
+    Client.countDocuments(filter),
+    Client.find(filter)
+      .sort(sort)
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean()
+  ]);
 
-  const clients = await Client.find(filter)
-    .sort(sort)
-    .skip((page - 1) * limit)
-    .limit(limit);
+  const pages = Math.max(Math.ceil(total / limit), 1);
 
   return {
     data: clients,
-    metadata: {
+    meta: {
       total,
       page,
+      limit,
       pages
     }
   };
 };
 
 const getClientById = async (companyId, clientId) => {
-  const client = await Client.findOne({ _id: clientId, companyId });
+  const client = await Client.findOne({ _id: clientId, companyId }).lean();
 
   if (!client) {
     throw new AppError('Client not found', 404);
@@ -85,7 +95,7 @@ const getClientById = async (companyId, clientId) => {
   return client;
 };
 
-const updateClient = async (companyId, clientId, payload) => {
+const updateClient = async (companyId, clientId, userId, payload) => {
   const client = await Client.findOne({ _id: clientId, companyId });
 
   if (!client) {
@@ -97,14 +107,14 @@ const updateClient = async (companyId, clientId, payload) => {
       companyId,
       email: payload.email,
       _id: { $ne: clientId }
-    });
+    }).lean();
 
     if (emailOwner) {
       throw new AppError('Client with this email already exists', 409);
     }
   }
 
-  Object.assign(client, payload);
+  Object.assign(client, payload, { updatedBy: userId });
   await client.save();
 
   return client;

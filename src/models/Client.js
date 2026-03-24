@@ -33,6 +33,16 @@ const clientSchema = new mongoose.Schema(
       type: String,
       enum: ['prospect', 'client', 'lost'],
       default: 'prospect'
+    },
+    createdBy: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    updatedBy: {
+      type: String,
+      required: true,
+      trim: true
     }
   },
   {
@@ -42,5 +52,7 @@ const clientSchema = new mongoose.Schema(
 );
 
 clientSchema.index({ companyId: 1, email: 1 }, { unique: true });
+clientSchema.index({ companyId: 1, phone: 1 });
+clientSchema.index({ companyId: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Client', clientSchema);
