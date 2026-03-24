@@ -4,6 +4,7 @@ const http = require('node:http');
 
 process.env.MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/test-db';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
+process.env.CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:3000';
 
 const app = require('../src/app');
 const { signToken } = require('../src/utils/jwt');
@@ -32,6 +33,44 @@ test('GET /health returns service status', async () => {
     assert.equal(response.status, 200);
     assert.equal(payload.success, true);
     assert.match(payload.message, /healthy/i);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+
+test('GET /health allows requests from configured client origin', async () => {
+  const { server, baseUrl } = await createTestServer();
+
+  try {
+    const response = await fetch(`${baseUrl}/health`, {
+      headers: {
+        origin: process.env.CLIENT_ORIGIN
+      }
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('access-control-allow-origin'), process.env.CLIENT_ORIGIN);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('GET /health rejects requests from unknown origins', async () => {
+  const { server, baseUrl } = await createTestServer();
+
+  try {
+    const response = await fetch(`${baseUrl}/health`, {
+      headers: {
+        origin: 'https://evil.example.com'
+      }
+    });
+
+    const payload = await response.json();
+
+    assert.equal(response.status, 403);
+    assert.equal(payload.success, false);
+    assert.equal(payload.message, 'Origin not allowed by CORS policy');
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
