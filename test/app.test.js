@@ -6,6 +6,7 @@ process.env.MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
 
 const app = require('../src/app');
+const { signToken } = require('../src/utils/jwt');
 
 const createTestServer = () => {
   const server = http.createServer(app);
@@ -36,13 +37,36 @@ test('GET /health returns service status', async () => {
   }
 });
 
-test('POST /api/clients validates payload', async () => {
+test('POST /api/clients rejects unauthenticated requests', async () => {
   const { server, baseUrl } = await createTestServer();
 
   try {
     const response = await fetch(`${baseUrl}/api/clients`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({})
+    });
+
+    const payload = await response.json();
+
+    assert.equal(response.status, 401);
+    assert.equal(payload.success, false);
+    assert.equal(payload.message, 'Unauthorized');
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+test('POST /api/clients validates payload for authenticated requests', async () => {
+  const { server, baseUrl } = await createTestServer();
+
+  try {
+    const response = await fetch(`${baseUrl}/api/clients`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${signToken({ sub: 'test-user-id', role: 'admin' })}`
+      },
       body: JSON.stringify({
         name: '',
         phone: '123',
@@ -58,6 +82,27 @@ test('POST /api/clients validates payload', async () => {
     assert.equal(payload.success, false);
     assert.equal(payload.message, 'Validation failed');
     assert.ok(Array.isArray(payload.details));
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+
+test('POST /api/leads rejects unauthenticated requests', async () => {
+  const { server, baseUrl } = await createTestServer();
+
+  try {
+    const response = await fetch(`${baseUrl}/api/leads`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({})
+    });
+
+    const payload = await response.json();
+
+    assert.equal(response.status, 401);
+    assert.equal(payload.success, false);
+    assert.equal(payload.message, 'Unauthorized');
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

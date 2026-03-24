@@ -1,8 +1,11 @@
 const express = require('express');
 const clientController = require('../controllers/clientController');
 const validateRequest = require('../middlewares/validateRequest');
+const { authenticate } = require('../middlewares/authMiddleware');
 
 const router = express.Router();
+
+router.use(authenticate);
 
 const clientSchema = {
   name: { type: 'string', required: true },
