@@ -119,6 +119,11 @@ sudo ufw status
 
 ## 5) Configure NGINX reverse proxy for HTTP first (port 80)
 
+If you already have a working `location /` proxy block, keep it and only ensure:
+- `server_name` includes both `attractor.store` and `www.attractor.store`
+- upstream remains `http://127.0.0.1:3000`
+- this site file is the one enabled in `sites-enabled`
+
 Create `/etc/nginx/sites-available/attractor.store`:
 
 ```bash
@@ -173,6 +178,12 @@ sudo certbot --nginx \
   --no-eff-email
 ```
 
+If the certificate already exists and only nginx wiring is missing, use:
+
+```bash
+sudo certbot install --cert-name attractor.store
+```
+
 What this does:
 - Requests Let’s Encrypt certificate for both domains
 - Adds `listen 443 ssl` blocks in NGINX
@@ -200,12 +211,17 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    listen [::]:443 ssl ipv6only=on;
-    listen 443 ssl;
+    listen [::]:443 ssl http2 ipv6only=on;
+    listen 443 ssl http2;
     ssl_certificate /etc/letsencrypt/live/attractor.store/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/attractor.store/privkey.pem;
     include /etc/letsencrypt/options-ssl-nginx.conf;
     ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    # Optional defense-in-depth headers
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Frame-Options SAMEORIGIN always;
 }
 
 server {
@@ -228,6 +244,12 @@ Print real active config:
 
 ```bash
 sudo nginx -T | sed -n '/server_name attractor.store/,/}/p'
+```
+
+To inspect exactly what certbot changed:
+
+```bash
+sudo grep -nE 'server_name|listen 443|ssl_certificate|ssl_certificate_key|proxy_pass' /etc/nginx/sites-available/attractor.store
 ```
 
 ---
