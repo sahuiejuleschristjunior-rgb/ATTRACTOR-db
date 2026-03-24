@@ -107,3 +107,37 @@ test('POST /api/leads rejects unauthenticated requests', async () => {
     await new Promise((resolve) => server.close(resolve));
   }
 });
+
+test('request logs include method, URL, status and response time without request body', async () => {
+  const { server, baseUrl } = await createTestServer();
+  const originalInfo = console.info;
+  const infoMessages = [];
+  console.info = (...args) => {
+    infoMessages.push(args.join(' '));
+  };
+
+  try {
+    const response = await fetch(`${baseUrl}/api/clients`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        password: 'super-secret-password'
+      })
+    });
+
+    assert.equal(response.status, 401);
+    assert.ok(infoMessages.length > 0);
+
+    const requestLog = infoMessages.find((message) =>
+      message.includes('POST /api/clients 401')
+    );
+
+    assert.ok(requestLog, 'Expected a request log for POST /api/clients');
+    assert.match(requestLog, /POST \/api\/clients 401 [0-9.]+ ms/);
+    assert.equal(requestLog.includes('super-secret-password'), false);
+    assert.equal(requestLog.includes('password'), false);
+  } finally {
+    console.info = originalInfo;
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
