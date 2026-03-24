@@ -14,7 +14,15 @@ app.disable('x-powered-by');
 app.use(helmet());
 app.use(
   cors({
-    origin: env.clientOrigin === '*' ? true : env.clientOrigin,
+    origin: (origin, callback) => {
+      if (!origin || origin === env.clientOrigin) {
+        return callback(null, true);
+      }
+
+      const corsError = new Error('Origin not allowed by CORS policy');
+      corsError.statusCode = 403;
+      return callback(corsError);
+    },
     credentials: true
   })
 );
