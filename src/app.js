@@ -41,6 +41,7 @@ app.get('/health', (_req, res) => {
 });
 
 app.use(env.apiPrefix, routes);
+app.get('/', (req, res) => res.send('Attractor API is running 🚀'));
 app.use(notFoundMiddleware);
 app.use(errorHandler);
 
