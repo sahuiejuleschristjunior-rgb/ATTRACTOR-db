@@ -65,7 +65,7 @@ test('POST /api/clients validates payload for authenticated requests', async () 
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        authorization: `Bearer ${signToken({ sub: 'test-user-id', role: 'admin' })}`
+        authorization: `Bearer ${signToken({ sub: 'test-user-id', role: 'admin', companyId: 'company-a' })}`
       },
       body: JSON.stringify({
         name: '',
